@@ -1,3 +1,4 @@
+
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -44,17 +45,17 @@
   td.pr { color: #cbd5e0; max-width: 220px; }
   td.pr span { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .pill { display: inline-flex; padding: 3px 9px; border-radius: 12px; font-size: 0.72rem; font-weight: 600; white-space: nowrap; }
-  .pp  { background: #2c7a39; color: #9ae6b4; }
-  .pv  { background: #2a4365; color: #90cdf4; }
-  .pt  { background: #553c9a; color: #d6bcfa; }
-  .pw  { background: #744210; color: #fbd38d; }
-  .po  { background: #2d3748; color: #a0aec0; }
+  .pp { background: #2c7a39; color: #9ae6b4; }
+  .pv { background: #2a4365; color: #90cdf4; }
+  .pt { background: #553c9a; color: #d6bcfa; }
+  .pw { background: #744210; color: #fbd38d; }
+  .po { background: #2d3748; color: #a0aec0; }
   .pgp { display: inline-flex; padding: 3px 9px; border-radius: 12px; font-size: 0.72rem; font-weight: 600; white-space: nowrap; }
-  .pi { background: #2d3748; color: #a0aec0; }
-  .pw2{ background: #1a365d; color: #90cdf4; }
-  .pg { background: #3d2d0e; color: #fbd38d; }
-  .pr2{ background: #1c4a1e; color: #9ae6b4; }
-  .pte{ background: #44337a; color: #d6bcfa; }
+  .pi  { background: #2d3748; color: #a0aec0; }
+  .pw2 { background: #1a365d; color: #90cdf4; }
+  .pg  { background: #3d2d0e; color: #fbd38d; }
+  .pr2 { background: #1c4a1e; color: #9ae6b4; }
+  .pte { background: #44337a; color: #d6bcfa; }
   .sc { display: flex; flex-direction: column; gap: 3px; }
   .sr { display: flex; align-items: center; gap: 5px; font-size: 0.72rem; }
   .sl { color: #718096; min-width: 44px; }
@@ -70,7 +71,6 @@
   .kk { color: #718096; min-width: 88px; flex-shrink: 0; }
   .vv { color: #e2e8f0; word-break: break-all; }
   .ts { font-size: 0.72rem; color: #4a5568; padding: 6px 28px 10px; }
-  .debug { background: #1a1f2e; border: 1px solid #2d3748; color: #a0aec0; padding: 10px 28px; font-size: 0.72rem; font-family: monospace; display: none; }
 </style>
 </head>
 <body>
@@ -85,7 +85,6 @@
 </header>
 
 <div class="err" id="err"></div>
-<div class="debug" id="debug"></div>
 
 <div class="summary-bar">
   <div class="stat-box"><div class="n" id="sT">…</div><div class="l">Active WOs</div></div>
@@ -108,134 +107,57 @@
 </div>
 
 <div id="main">
-  <div class="loading-wrap"><div class="spinner"></div><br>Loading live data…</div>
+  <div class="loading-wrap"><div class="spinner"></div><br>Loading live data from Google Sheets…</div>
 </div>
 <div class="ts" id="ts"></div>
 
 <script>
-const SID = '1rULAr9KSHKo31iKbuz7Qu1kJBKB7KiGDK85AX4T6zMY';
+const API = 'https://script.google.com/macros/s/AKfycbw7yFCDaftpEGe45pgTvidCQ6lIU5L3DTMNoCtTsOa-ZVy0k2JPOLrtnCkLdUVYN0pcXQ/exec';
 
-// ── Tab names exactly as they appear in Google Sheets ─────────────────────
-// Confirmed from photo: "Work Orders", "Storage and progress"
-// Inferring the rest based on AppSheet naming conventions (spaces not underscores)
-const TABS = {
-  progress:  'Storage and progress',
-  workOrders:'Work Orders',
-  cnp:       'Container and Packaging',
-  purchases: 'CandP Purchases',
-  sales:     'CandP Sales',
-  extracts:  'Extract List',
-};
-
-// ── CSV export URL (no JSONP, uses Google's export endpoint) ──────────────
-// This works because it's a direct download, not XHR — uses no-cors mode
-// Actually we need to try a different method entirely: Google Visualization API
-// with tqx=out:csv but loaded via a hidden iframe trick, OR
-// use the undocumented gviz endpoint with tq query
-
-// ── Best approach: use Google Sheets "publish to web" CSV format via fetch
-// The key insight: we must use mode:'no-cors' OR publish the sheet
-// Since the sheet is viewer-accessible, let's use the gviz tq endpoint
-// with a tqx=out:json callback — but load it differently
-
-let _cb = 0;
-function loadSheet(tabName) {
-  return new Promise((resolve, reject) => {
-    const name = '__cb' + (_cb++);
-    // Use gviz tq endpoint — works for public sheets
-    const url = 'https://docs.google.com/spreadsheets/d/' + SID
-      + '/gviz/tq?tqx=out:json&tq=select%20*&sheet='
-      + encodeURIComponent(tabName) + '&callback=' + name;
-
-    const t = setTimeout(() => {
-      cleanup();
-      reject(new Error('Timeout: ' + tabName));
-    }, 20000);
-
-    function cleanup() {
-      clearTimeout(t);
-      delete window[name];
-      if (s.parentNode) s.parentNode.removeChild(s);
-    }
-
-    window[name] = function(data) {
-      cleanup();
-      try {
-        const cols = data.table.cols.map(c => c.label || c.id);
-        const rows = (data.table.rows || []).map(r => {
-          const obj = {};
-          (r.c || []).forEach((cell, i) => {
-            obj[cols[i]] = (cell && cell.v !== null && cell.v !== undefined) ? String(cell.v) : '';
-          });
-          return obj;
-        });
-        resolve(rows);
-      } catch(e) {
-        reject(new Error('Parse error on ' + tabName + ': ' + e.message));
-      }
-    };
-
-    const s = document.createElement('script');
-    s.onerror = () => { cleanup(); reject(new Error('Script load failed: ' + tabName + '\nURL: ' + url)); };
-    s.src = url;
-    document.head.appendChild(s);
-  });
-}
-
-// ── State ────────────────────────────────────────────────────────────────
 let allRows = [], typeFilter = 'all', issuesOnly = false;
 
 async function loadAll() {
   document.getElementById('main').innerHTML =
     '<div class="loading-wrap"><div class="spinner"></div><br>Loading live data from Google Sheets…</div>';
   document.getElementById('err').style.display = 'none';
-  document.getElementById('debug').style.display = 'none';
   ['sT','sO','sI','sTe'].forEach(id => document.getElementById(id).textContent = '…');
 
-  // Load sheets one by one so we can report which one fails
-  let progress, workOrders, cnp, purchases, sales, extracts;
-  const results = {};
-  const errors = [];
-
-  for (const [key, tabName] of Object.entries(TABS)) {
-    try {
-      results[key] = await loadSheet(tabName);
-    } catch(e) {
-      errors.push(tabName + ': ' + e.message);
-      results[key] = [];
-    }
-  }
-
-  if (errors.length > 0) {
-    const db = document.getElementById('debug');
-    db.style.display = 'block';
-    db.textContent = 'Tab load errors:\n' + errors.join('\n');
-  }
-
-  if (!results.progress.length && !results.workOrders.length) {
-    document.getElementById('err').style.display = 'block';
-    document.getElementById('err').innerHTML =
-      '<strong>⚠ Could not load any sheet data.</strong><br>' +
-      'Tab names tried: ' + Object.values(TABS).join(', ') + '<br>' +
-      'Check the debug info below for details.';
+  try {
+    const res = await fetch(API);
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    const data = await res.json();
+    process(data);
+    document.getElementById('ts').textContent = 'Last refreshed: ' + new Date().toLocaleString();
+  } catch(e) {
     document.getElementById('main').innerHTML = '';
-    return;
+    const eb = document.getElementById('err');
+    eb.style.display = 'block';
+    eb.innerHTML = '⚠ <strong>Could not load data:</strong> ' + e.message;
   }
-
-  process(results.progress, results.workOrders, results.cnp,
-          results.purchases, results.sales, results.extracts);
-  document.getElementById('ts').textContent = 'Last refreshed: ' + new Date().toLocaleString();
 }
 
-function process(progress, workOrders, cnp, purchases, sales, extracts) {
-  const active = progress.filter(r => (r['Progress'] || '').toLowerCase() !== 'completed');
+function process(data) {
+  const progress  = data['Storage and progress'] || [];
+  const workOrders= data['Work Orders'] || [];
+  const cnp       = data['Container and Packaging'] || [];
+  const purchases  = data['CandP Purchases'] || [];
+  const sales      = data['CandP Sales'] || [];
+  const extracts   = data['Extract List'] || [];
 
+  // Active = not completed
+  const active = progress.filter(r => String(r['Progress'] || '').toLowerCase() !== 'completed');
+
+  // Index WOs — handle numeric IDs (gviz returns 26.0 etc)
   const woMap = {};
-  workOrders.forEach(r => { const id = (r['WO-ID'] || '').trim(); if (id) woMap[id] = r; });
+  workOrders.forEach(r => {
+    const id = String(r['WO-ID'] || '').replace(/\.0$/, '').trim();
+    if (id) woMap[id] = r;
+  });
 
+  // C&P stock
   const cnpStock = {};
   cnp.forEach(r => {
-    const id = (r['CNP-ID'] || '').trim();
+    const id = String(r['CNP-ID'] || '').trim();
     if (!id) return;
     cnpStock[id] = {
       id, category: r['Category'] || '', color: r['Color'] || '',
@@ -244,35 +166,38 @@ function process(progress, workOrders, cnp, purchases, sales, extracts) {
     };
   });
   purchases.forEach(r => {
-    const id = (r['CNP-ID'] || '').trim();
+    const id = String(r['CNP-ID'] || '').trim();
     const qty = parseFloat(r['Quantity Purchased '] || r['Quantity Purchased'] || 0);
     if (cnpStock[id]) cnpStock[id].stock += qty;
   });
   sales.forEach(r => {
-    const id = (r['CNP-ID'] || '').trim();
+    const id = String(r['CNP-ID'] || '').trim();
     const qty = parseFloat(r['Quantity Sold '] || r['Quantity Sold'] || 0);
     if (cnpStock[id]) cnpStock[id].stock -= qty;
   });
 
+  // Extract index
   const extMap = {};
   extracts.forEach(r => {
-    const lot = (r['Extract Lot Number'] || '').trim().toLowerCase();
+    const lot = String(r['Extract Lot Number'] || '').trim().toLowerCase();
     if (lot) extMap[lot] = r;
   });
 
   allRows = active.map(sp => {
-    const woId = (sp['Wo-id'] || sp['WO-ID'] || '').trim();
-    const wo = woMap[woId] || {};
-    const company    = wo['Company Name'] || sp['Company name'] || '';
-    const productName= wo['Product Name - ex. 1g Sour Diesel Pre Roll.'] || sp['Product Name'] || '';
-    const productType= wo['What kind of Project are we working on?'] || sp['What kind of Project are we working on?'] || '';
-    const prog       = sp['Progress'] || '';
+    const rawId = String(sp['Wo-id'] || sp['WO-ID'] || '').replace(/\.0$/, '').trim();
+    const woId = 'WO-' + rawId;
+    const wo = woMap[rawId] || woMap['WO-' + rawId] || {};
 
-    const el1 = (wo['Extract Lot Number']   || sp['Extract Lot Number']   || '').trim();
-    const el2 = (wo['Extract Lot Number ']  || sp['Extract Lot Number_11']|| '').trim();
-    const tl1 = (wo['Terpene Lot Number']   || sp['Terpene Lot Number']   || '').trim();
-    const tl2 = (wo['Terpene Lot Number 2'] || sp['Terpene Lot Number 2'] || '').trim();
-    const cnpId = (wo['Project Supplies']   || sp['Project Supplies']     || '').trim();
+    const company     = String(wo['Company Name'] || sp['Company name'] || '');
+    const productName = String(wo['Product Name - ex. 1g Sour Diesel Pre Roll.'] || sp['Product Name'] || '');
+    const productType = String(wo['What kind of Project are we working on?'] || sp['What kind of Project are we working on?'] || '');
+    const prog        = String(sp['Progress'] || '');
+
+    const el1  = String(wo['Extract Lot Number']   || sp['Extract Lot Number']    || '').trim();
+    const el2  = String(wo['Extract Lot Number ']  || sp['Extract Lot Number_11'] || '').trim();
+    const tl1  = String(wo['Terpene Lot Number']   || sp['Terpene Lot Number']    || '').trim();
+    const tl2  = String(wo['Terpene Lot Number 2'] || sp['Terpene Lot Number 2']  || '').trim();
+    const cnpId= String(wo['Project Supplies']     || sp['Project Supplies']      || '').trim();
 
     const ei1 = el1 ? extMap[el1.toLowerCase()] : null;
     const ei2 = el2 ? extMap[el2.toLowerCase()] : null;
@@ -294,8 +219,7 @@ function process(progress, workOrders, cnp, purchases, sales, extracts) {
 }
 
 function updateStats() {
-  const t = allRows.length;
-  const i = allRows.filter(r => r.hasIssue).length;
+  const t = allRows.length, i = allRows.filter(r => r.hasIssue).length;
   const te = allRows.filter(r => r.prog.toLowerCase().includes('testing')).length;
   document.getElementById('sT').textContent  = t;
   document.getElementById('sO').textContent  = t - i;
@@ -312,7 +236,7 @@ function typePill(t) {
 function progPill(p) {
   const lp = p.toLowerCase();
   const c = lp.includes('intaken') ? 'pi' : lp.includes('weighed') ? 'pw2' : lp.includes('ground') ? 'pg' : lp.includes('rolled') ? 'pr2' : lp.includes('testing') ? 'pte' : 'pi';
-  return '<span class="pgp ' + c + '">' + (p || '—') + '</span>';
+  return '<span class="pgp ' + c + '">' + (p||'—') + '</span>';
 }
 
 function sv(q, unit) {
@@ -326,7 +250,7 @@ function render() {
   const f = allRows.filter(r => {
     if (typeFilter !== 'all' && !r.productType.includes(typeFilter)) return false;
     if (issuesOnly && !r.hasIssue) return false;
-    if (srch && !(r.woId + r.company + r.productName + r.productType).toLowerCase().includes(srch)) return false;
+    if (srch && !(r.woId+r.company+r.productName+r.productType).toLowerCase().includes(srch)) return false;
     return true;
   });
 
@@ -349,7 +273,7 @@ function render() {
 
     let cnpH = '<div class="sc">';
     if (r.cnpId && r.ci) {
-      const lbl = [r.ci.category, r.ci.size ? r.ci.size+'mL':'', r.ci.color].filter(Boolean).join(' ').slice(0,22);
+      const lbl = [r.ci.category, r.ci.size?r.ci.size+'mL':'', r.ci.color].filter(Boolean).join(' ').slice(0,22);
       cnpH += '<div class="sr"><span class="sl" title="'+r.cnpId+'">'+lbl+'</span>' + sv(r.cq,'units') + '</div>';
     } else if (r.cnpId) {
       cnpH += '<div class="sr"><span class="sl">'+r.cnpId+'</span><span class="na">—</span></div>';
@@ -358,17 +282,8 @@ function render() {
     }
     cnpH += '</div>';
 
-    h += '<tr class="dr" style="' + bdr + '" onclick="tog(\'' + did + '\')">'
-      + '<td class="wo">' + r.woId + '</td>'
-      + '<td class="co">' + (r.company||'—') + '</td>'
-      + '<td class="pr"><span title="'+r.productName+'">'+(r.productName||'—')+'</span></td>'
-      + '<td>' + typePill(r.productType) + '</td>'
-      + '<td>' + progPill(r.prog) + '</td>'
-      + '<td>' + ext + '</td>'
-      + '<td>' + cnpH + '</td>'
-      + '</tr>';
+    h += '<tr class="dr" style="'+bdr+'" onclick="tog(\''+did+'\')"><td class="wo">'+r.woId+'</td><td class="co">'+(r.company||'—')+'</td><td class="pr"><span title="'+r.productName+'">'+(r.productName||'—')+'</span></td><td>'+typePill(r.productType)+'</td><td>'+progPill(r.prog)+'</td><td>'+ext+'</td><td>'+cnpH+'</td></tr>';
 
-    // Detail
     const lots = [
       r.el1 && '<div class="kv"><span class="kk">Extract Lot 1</span><span class="vv">'+r.el1+(r.es1!==null?' ('+Math.round(r.es1)+'g)':'')+'</span></div>',
       r.el2 && '<div class="kv"><span class="kk">Extract Lot 2</span><span class="vv">'+r.el2+(r.es2!==null?' ('+Math.round(r.es2)+'g)':'')+'</span></div>',
@@ -378,20 +293,11 @@ function render() {
 
     const cnpD = r.cnpId
       ? '<div class="kv"><span class="kk">CNP-ID</span><span class="vv">'+r.cnpId+'</span></div>'
-        + (r.ci ? '<div class="kv"><span class="kk">Type</span><span class="vv">'+r.ci.category+' '+(r.ci.size||'')+'mL '+r.ci.color+'</span></div>' : '')
-        + '<div class="kv"><span class="kk">Stock</span><span class="vv '+(r.cq<=0?'bd':r.cq<100?'wn':'ok')+'">'+(r.cq!==null?Math.round(r.cq)+' units':'—')+'</span></div>'
+        +(r.ci?'<div class="kv"><span class="kk">Type</span><span class="vv">'+r.ci.category+' '+(r.ci.size||'')+'mL '+r.ci.color+'</span></div>':'')
+        +'<div class="kv"><span class="kk">Stock</span><span class="vv '+(r.cq<=0?'bd':r.cq<100?'wn':'ok')+'">'+(r.cq!==null?Math.round(r.cq)+' units':'—')+'</span></div>'
       : '<span class="na">No packaging linked</span>';
 
-    h += '<tr class="detrow" id="'+did+'"><td colspan="7"><div class="detin">'
-      + '<div class="ds"><h4>Work Order</h4>'
-      + '<div class="kv"><span class="kk">WO-ID</span><span class="vv">'+r.woId+'</span></div>'
-      + '<div class="kv"><span class="kk">Company</span><span class="vv">'+r.company+'</span></div>'
-      + '<div class="kv"><span class="kk">Product</span><span class="vv">'+r.productName+'</span></div>'
-      + '<div class="kv"><span class="kk">Progress</span><span class="vv">'+r.prog+'</span></div>'
-      + '</div>'
-      + '<div class="ds"><h4>Extract / Terpene Lots</h4>' + lots + '</div>'
-      + '<div class="ds"><h4>Container & Packaging</h4>' + cnpD + '</div>'
-      + '</div></td></tr>';
+    h += '<tr class="detrow" id="'+did+'"><td colspan="7"><div class="detin"><div class="ds"><h4>Work Order</h4><div class="kv"><span class="kk">WO-ID</span><span class="vv">'+r.woId+'</span></div><div class="kv"><span class="kk">Company</span><span class="vv">'+r.company+'</span></div><div class="kv"><span class="kk">Product</span><span class="vv">'+r.productName+'</span></div><div class="kv"><span class="kk">Progress</span><span class="vv">'+r.prog+'</span></div></div><div class="ds"><h4>Extract / Terpene Lots</h4>'+lots+'</div><div class="ds"><h4>Container & Packaging</h4>'+cnpD+'</div></div></td></tr>';
   });
 
   h += '</tbody></table></div>';
